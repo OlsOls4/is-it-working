@@ -6,7 +6,7 @@ Log the products you start, take a guided selfie once a week, and YouCam Skin AI
 
 Built for Perfect Corp's **YouCam API Skin AI & eCommerce VTO Hackathon (2026)**.
 
-- **Live demo:** see the Vercel URL in the repo description (runs in demo mode, no setup)
+- **Live demo:** https://is-it-working.vercel.app (demo mode, no setup)
 - **Screenshots:** [`screenshots/`](screenshots/)
 
 ## Why
