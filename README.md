@@ -6,7 +6,7 @@ Log the products you start, take a guided selfie once a week, and YouCam Skin AI
 
 Built for Perfect Corp's **YouCam API Skin AI & eCommerce VTO Hackathon (2026)**.
 
-- **Live demo:** https://is-it-working.vercel.app (demo mode, no setup)
+- **Live demo:** https://is-it-working.vercel.app (works for everyone with recorded YouCam results; live YouCam calls with an access code)
 - **Screenshots:** [`screenshots/`](screenshots/)
 
 ## Why
@@ -65,12 +65,20 @@ Browser (Next.js App Router, client components, localStorage)
   ├─ /, /products/:id, /trends, /compare   ← computeVerdict() (pure TS, runs client-side)
   └─ /try-on    POST /api/task/skin-tone-analysis → matchShades() → POST /api/task/makeup-vto
 Server (Vercel functions)
-  └─ /api/task/*  → YouCam File API + task API (live)  |  recorded fixtures (demo)
+  └─ /api/task/*  → access-code gate → credit check → per-IP limit → YouCam File API + task API (live)
+                   any failure / no code → recorded fixtures (demo)
 ```
 
 ## Demo mode vs live mode
 
-Demo mode is on when `YOUCAM_API_KEY` is missing **or** `DEMO_MODE=1`. The UI shows a **DEMO** / **LIVE** badge, and every demo result is labelled.
+Demo mode is on for the whole deployment when `YOUCAM_API_KEY` is missing **or** `DEMO_MODE=1`. With a key and `DEMO_MODE=0`, live mode is switched on, but a request only reaches the YouCam API when **all** of these hold — otherwise it gets the recorded demo result, so the public URL always works and can't drain units:
+
+1. `LIVE_ACCESS_CODE` is set on the server **and** the browser sends it (open the app once with `?access=<code>`; it's kept in `localStorage` and sent as `x-access-code`). No code configured → everyone gets the demo.
+2. The unit balance (`GET /s2s/v1.0/client/credit`, free) covers the call's cost; otherwise → recorded result with *"Live YouCam credits exhausted — showing a recorded result."*
+3. The per-IP daily limit isn't hit (`LIVE_DAILY_LIMIT_PER_IP`, default 6; `LIVE_DAILY_LIMIT_GLOBAL`, default 40; in-memory, best-effort per instance).
+4. The API call succeeds. Any upload/task/poll error or timeout → recorded result with a note. Photo-quality errors (no face, too dark, face too small…) are shown so you can retake, with a button to see the recorded result instead.
+
+The UI shows a **DEMO** / **LIVE** badge for *this* browser, and every recorded result is labelled. `?demo=1` forces the demo in a browser, `?demo=0` undoes it. The seeded demo profile (8 weeks, 4 products) is always available under Products → Your data, whatever the mode. `GET /api/mode` reports `{demo, liveConfigured, accessCodeRequired, accessOk, reason}` (send `x-access-code` to check a code).
 
 What's real and what's simulated (all on a **synthetic, AI-generated face** — no real person):
 
@@ -102,11 +110,12 @@ Camera capture needs HTTPS or `localhost`.
 | `YOUCAM_API_KEY` | YouCam API key (server-side only). Empty → demo mode. |
 | `DEMO_MODE` | `1` forces demo mode even with a key; `0` (with a key) = live. |
 | `YOUCAM_API_BASE` | optional, defaults to `https://yce-api-01.makeupar.com` |
-| `LIVE_ACCESS_CODE` | optional; if set, live calls require header `x-access-code` (open the app once with `?access=<code>` to store it in the browser) so a public deployment can't drain units |
+| `LIVE_ACCESS_CODE` | required for live calls: browsers must send it as `x-access-code` (open the app once with `?access=<code>`). Unset → live calls are served the demo. |
+| `LIVE_DAILY_LIMIT_PER_IP` / `LIVE_DAILY_LIMIT_GLOBAL` | optional live-call caps per day (defaults 6 / 40, per serverless instance) |
 
 ## Deploy
 
-`scripts/deploy.sh` deploys the working tree to Vercel production via the REST API (`VERCEL_TOKEN` env var or a proxy that injects it). Or import the repo in Vercel; no build settings needed. To go live, add `YOUCAM_API_KEY` and `DEMO_MODE=0` in the Vercel project's environment variables and redeploy.
+`scripts/deploy.sh` deploys the working tree to Vercel production via the REST API (`VERCEL_TOKEN` env var or a proxy that injects it). Or import the repo in Vercel; no build settings needed. To go live, add `YOUCAM_API_KEY`, `DEMO_MODE=0` and `LIVE_ACCESS_CODE` in the Vercel project's environment variables and redeploy.
 
 ## Limitations
 

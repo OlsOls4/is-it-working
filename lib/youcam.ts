@@ -22,9 +22,46 @@ const VERSION: Record<Feature, string> = {
   "makeup-vto": "v2.0",
 };
 
+/** Deployment-level: true when no key is set or DEMO_MODE=1. Individual requests can still be demo (see liveGate). */
 export function isDemoMode() {
   return !process.env.YOUCAM_API_KEY || process.env.DEMO_MODE === "1" || process.env.DEMO_MODE === "true";
 }
+export const liveConfigured = () => !isDemoMode();
+
+/** Units per call, from GET /s2s/v2.0/credit/feature-cost (skin analysis = SD, 5-8 concerns). */
+export const UNIT_COST: Record<Feature, number> = { "skin-analysis": 12, "skin-tone-analysis": 20, "makeup-vto": 1 };
+
+export type GateReason = "demo-deployment" | "forced-demo" | "no-access-code-configured" | "access-code-missing" | "access-code-wrong";
+/**
+ * Decides whether THIS request may call the live API. Live calls need:
+ * a key + DEMO_MODE=0, a LIVE_ACCESS_CODE configured on the server, and the matching x-access-code header.
+ * Anything else is served the recorded demo, so a public URL can never drain units.
+ */
+export function liveGate(req: Request): { live: true } | { live: false; reason: GateReason } {
+  if (isDemoMode()) return { live: false, reason: "demo-deployment" };
+  if (req.headers.get("x-force-demo") === "1") return { live: false, reason: "forced-demo" };
+  const code = process.env.LIVE_ACCESS_CODE;
+  if (!code) return { live: false, reason: "no-access-code-configured" };
+  const sent = req.headers.get("x-access-code");
+  if (!sent) return { live: false, reason: "access-code-missing" };
+  if (sent.trim() !== code) return { live: false, reason: "access-code-wrong" };
+  return { live: true };
+}
+
+let creditCache: { at: number; units: number } | null = null;
+/** Remaining units (GET /s2s/v1.0/client/credit, costs nothing). Cached 60 s per instance. null if unknown. */
+export async function getCredit(): Promise<number | null> {
+  if (creditCache && Date.now() - creditCache.at < 60_000) return creditCache.units;
+  try {
+    const r = await fetch(`${BASE}/s2s/v1.0/client/credit`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(6000) });
+    const j = await r.json();
+    if (!r.ok || !Array.isArray(j?.results)) return null;
+    const units = j.results.reduce((a: number, x: any) => a + (Number(x.amount_dec ?? x.amount) || 0), 0);
+    creditCache = { at: Date.now(), units };
+    return units;
+  } catch { return null; }
+}
+export function spendCredit(units: number) { if (creditCache) creditCache.units -= units; }
 
 function headers(extra: Record<string, string> = {}) {
   return { Authorization: `Bearer ${process.env.YOUCAM_API_KEY}`, "Content-Type": "application/json", ...extra };

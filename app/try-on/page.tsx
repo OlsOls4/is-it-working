@@ -19,6 +19,7 @@ function TryOn() {
   const [src, setSrc] = useState<{ url: string; blob?: Blob } | null>(null);
   const [tone, setTone] = useState<Tone | null>(null);
   const [toneDemo, setToneDemo] = useState(false);
+  const [notice, setNotice] = useState("");
   const [shade, setShade] = useState<string | null>(null);
   const [vto, setVto] = useState<{ url: string; demo: boolean; shade: string } | null>(null);
   const [busy, setBusy] = useState<"" | "tone" | "vto">("");
@@ -39,7 +40,7 @@ function TryOn() {
     setErr(""); setBusy("tone");
     try {
       const r = await runTask<Tone>("skin-tone-analysis", demo ? null : await getBlob());
-      setTone(r.result); setToneDemo(r.demo); setShade(null); setVto(null);
+      setTone(r.result); setToneDemo(r.demo); setNotice(r.notice || ""); setShade(null); setVto(null);
     } catch (e) { setErr((e as Error).message); }
     setBusy("");
   }
@@ -48,7 +49,7 @@ function TryOn() {
     setErr(""); setBusy("vto");
     try {
       const r = await runTask<{ url: string }>("makeup-vto", demo ? null : await getBlob(), { shade: chosen.hex });
-      setVto({ url: r.result.url, demo: r.demo, shade: chosen.code });
+      setVto({ url: r.result.url, demo: r.demo, shade: chosen.code }); if (r.notice) setNotice(r.notice);
     } catch (e) { setErr((e as Error).message); }
     setBusy("");
   }
@@ -116,6 +117,7 @@ function TryOn() {
         </div>
       )}
 
+      {notice && <div className="banner warn">{notice}</div>}
       {err && <div className="banner err">{err}</div>}
 
       {vto && photoUrl && (

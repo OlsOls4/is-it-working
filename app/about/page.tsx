@@ -31,11 +31,13 @@ export default function About() {
 
       <section className="section card" id="modes">
         <h3>Demo vs live</h3>
-        <p className="small" style={{ marginTop: 6 }}>This deployment is in <b className="mono">{demo ? "DEMO" : "LIVE"}</b> mode.</p>
+        <p className="small" style={{ marginTop: 6 }}>{demo
+          ? <>This deployment is in <b className="mono">DEMO</b> mode: every analysis returns a recorded YouCam response.</>
+          : <>Live YouCam API calls are <b className="mono">ON</b> for testers with an access code (open the app once with <span className="mono">?access=&lt;code&gt;</span>). Everyone else — and anyone when live credits run out or the API errors — gets the recorded demo, so the app always works. Open with <span className="mono">?demo=1</span> to force the demo, <span className="mono">?demo=0</span> to undo.</>}</p>
         <ul className="reasons small">
           <li><b>Real:</b> week-0 skin analysis scores and masks, and the foundation try-on image, are recorded responses from the live YouCam API on a synthetic AI-generated face (no real person).</li>
           <li><b>Simulated:</b> weeks 1–8 scores (same response shape), the week 4/8 photos (AI-generated variants), and the skin-tone response (documented schema; 20 units was over budget).</li>
-          <li>Live mode: set <span className="mono">YOUCAM_API_KEY</span> and <span className="mono">DEMO_MODE=0</span>. Calls go server-side only; the key never reaches the browser.</li>
+          <li>Live mode: <span className="mono">YOUCAM_API_KEY</span>, <span className="mono">DEMO_MODE=0</span> and <span className="mono">LIVE_ACCESS_CODE</span>. Calls go server-side only; the key never reaches the browser. Live calls check the unit balance first and are rate-limited per device per day.</li>
         </ul>
       </section>
       <p className="foot">Your data stays in this browser. <Link href="/products#data">Manage data</Link> · MIT licensed · Not medical advice.</p>

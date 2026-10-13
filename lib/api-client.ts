@@ -1,9 +1,25 @@
 "use client";
 export type Feature = "skin-analysis" | "skin-tone-analysis" | "makeup-vto";
 
-export async function getMode(): Promise<{ demo: boolean; accessCodeRequired?: boolean }> {
-  const r = await fetch("/api/mode", { cache: "no-store" });
+export type Mode = { demo: boolean; liveConfigured?: boolean; accessCodeRequired?: boolean; accessOk?: boolean; reason?: string };
+
+/** Headers that tell the server whether this browser may use live mode (access code) or wants the demo. */
+export function modeHeaders(forceDemo = false): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (typeof window === "undefined") return h;
+  const code = localStorage.getItem("iiw:access");
+  if (code) h["x-access-code"] = code;
+  if (forceDemo || localStorage.getItem("iiw:forceDemo") === "1") h["x-force-demo"] = "1";
+  return h;
+}
+
+export async function getMode(): Promise<Mode> {
+  const r = await fetch("/api/mode", { cache: "no-store", headers: modeHeaders() });
   return r.json();
+}
+
+export class TaskError extends Error {
+  constructor(message: string, public canFallback = false) { super(message); }
 }
 
 /** Start a YouCam task through our server route and poll it to completion. */
@@ -12,26 +28,37 @@ export async function runTask<T = any>(
   image: Blob | null,
   extra: Record<string, string> = {},
   onStatus?: (s: string) => void,
-): Promise<{ result: T; demo: boolean; provenance?: string }> {
+  opts: { forceDemo?: boolean } = {},
+): Promise<{ result: T; demo: boolean; provenance?: string; notice?: string }> {
   const form = new FormData();
   if (image) form.append("image", image, "selfie.jpg");
   Object.entries(extra).forEach(([k, v]) => form.append(k, v));
-  const headers: Record<string, string> = {};
-  const code = typeof window !== "undefined" ? localStorage.getItem("iiw:access") : null;
-  if (code) headers["x-access-code"] = code;
+  const headers = modeHeaders(opts.forceDemo);
+  const recorded = async (notice: string) => {
+    const r = await fetch(`/api/task/${feature}/demo-${feature}`, { cache: "no-store" });
+    const j = await r.json();
+    return { result: j.result as T, demo: true, provenance: j.provenance, notice };
+  };
   onStatus?.("uploading");
-  const start = await fetch(`/api/task/${feature}`, { method: "POST", body: form, headers });
-  const s = await start.json();
-  if (!start.ok) throw new Error(s.error || "Could not start analysis");
+  let s: any;
+  try {
+    const start = await fetch(`/api/task/${feature}`, { method: "POST", body: form, headers });
+    s = await start.json();
+    if (!start.ok) throw new TaskError(s.error || "Could not start analysis", start.status >= 500);
+  } catch (e) {
+    if (e instanceof TaskError && !e.canFallback) throw e;
+    return recorded("Couldn't reach the analysis service — showing a recorded result.");
+  }
   onStatus?.("analysing");
   const t0 = Date.now();
   for (;;) {
-    const r = await fetch(`/api/task/${feature}/${encodeURIComponent(s.taskId)}`, { cache: "no-store" });
-    const j = await r.json();
-    if (j.status === "success") return { result: j.result, demo: j.demo, provenance: j.provenance };
-    if (j.status === "error") throw new Error(friendlyError(j.error, j.message));
-    if (Date.now() - t0 > 90_000) throw new Error("Analysis timed out — please try again.");
-    await new Promise((res) => setTimeout(res, 2500));
+    let j: any;
+    try { j = await (await fetch(`/api/task/${feature}/${encodeURIComponent(s.taskId)}`, { cache: "no-store" })).json(); }
+    catch { j = { status: "running" }; }
+    if (j.status === "success") return { result: j.result, demo: j.demo, provenance: j.provenance, notice: j.notice || s.notice };
+    if (j.status === "error") throw new TaskError(friendlyError(j.error, j.message), true);
+    if (Date.now() - t0 > 90_000) return recorded("The live YouCam API took too long — showing a recorded result.");
+    await new Promise((res) => setTimeout(res, s.demo ? 600 : 2500));
   }
 }
 

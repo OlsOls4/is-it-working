@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMode } from "@/components/ModeProvider";
-import { prepareImage, runTask } from "@/lib/api-client";
+import { prepareImage, runTask, TaskError } from "@/lib/api-client";
 import { actions, useAppState } from "@/lib/store";
 import { CONCERNS } from "@/lib/concerns";
 import type { CheckIn, ConcernKey } from "@/lib/types";
@@ -21,12 +21,14 @@ const Guide = () => (
 );
 
 export default function CheckInPage() {
-  const { demo } = useMode();
+  const { demo, liveConfigured } = useMode();
   const state = useAppState();
   const [step, setStep] = useState<Step>("prep");
   const [photo, setPhoto] = useState<{ blob: Blob; dataUrl: string; luminance: number; width: number; height: number; preview: string } | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [isDemoResult, setIsDemoResult] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [canFallback, setCanFallback] = useState(false);
   const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
   const [mask, setMask] = useState<ConcernKey | null>(null);
@@ -78,14 +80,14 @@ export default function CheckInPage() {
     setStep("review");
   }
 
-  async function analyse() {
+  async function analyse(forceDemo = false) {
     if (!photo) return;
-    setStep("analysing"); setErr("");
+    setStep("analysing"); setErr(""); setNotice(""); setCanFallback(false);
     try {
-      const r = await runTask<Result>("skin-analysis", photo.blob, {}, setStatus);
-      setResult(r.result); setIsDemoResult(r.demo); setStep("result");
+      const r = await runTask<Result>("skin-analysis", photo.blob, {}, setStatus, { forceDemo });
+      setResult(r.result); setIsDemoResult(r.demo); setNotice(r.notice || ""); setStep("result");
     } catch (e) {
-      setErr((e as Error).message); setStep("error");
+      setErr((e as Error).message); setCanFallback(e instanceof TaskError && e.canFallback); setStep("error");
     }
   }
 
@@ -123,9 +125,9 @@ export default function CheckInPage() {
             <button className="btn block" onClick={openCamera}>Open camera</button>
             <button className="btn ghost block" onClick={() => fileRef.current?.click()}>Upload a selfie</button>
             <input ref={fileRef} type="file" accept="image/jpeg,image/png" capture="user" hidden onChange={(e) => onFile(e.target.files?.[0])} />
-            {demo && <button className="btn soft block" onClick={useSample}>Use the sample face (demo)</button>}
+            <button className="btn soft block" onClick={useSample}>{demo ? "Use the sample face (demo)" : "Use the synthetic sample face"}</button>
           </div>
-          {demo && <div className="banner demo">◆ Demo mode: analysis returns the recorded real YouCam response for our synthetic sample face, whatever photo you use.</div>}
+          {demo && <div className="banner demo">◆ Demo mode: analysis returns the recorded real YouCam response for our synthetic sample face, whatever photo you use.{liveConfigured ? " Live analysis is switched on for testers with an access code." : ""}</div>}
           {!demo && <p className="small muted" style={{ marginTop: 12 }}>Live mode: your photo is sent to the YouCam Skin Analysis API (8 concerns). It isn't stored on our server.</p>}
         </>
       )}
@@ -154,7 +156,7 @@ export default function CheckInPage() {
           {!lowLight && !brightLight && !smallImg && <div className="banner" style={{ background: "var(--keep-bg)", color: "var(--keep)" }}>✓ Lighting looks even.</div>}
           <div className="btn-row section">
             <button className="btn ghost" onClick={() => { setPhoto(null); setStep("prep"); }}>Retake</button>
-            <button className="btn" disabled={!!smallImg} onClick={analyse}>Analyse skin</button>
+            <button className="btn" disabled={!!smallImg} onClick={() => analyse()}>Analyse skin</button>
           </div>
         </>
       )}
@@ -175,8 +177,9 @@ export default function CheckInPage() {
           <div className="banner err">{err}</div>
           <div className="btn-row section">
             <button className="btn ghost" onClick={() => setStep("prep")}>Start again</button>
-            <button className="btn" onClick={analyse}>Retry</button>
+            <button className="btn" onClick={() => analyse()}>Retry</button>
           </div>
+          {canFallback && <button className="btn soft block section" onClick={() => analyse(true)}>Show the recorded demo result instead</button>}
         </>
       )}
 
@@ -184,7 +187,8 @@ export default function CheckInPage() {
         <>
           <div className="eyebrow">{isDemoResult ? "Demo · recorded real YouCam response" : "Live · YouCam Skin Analysis"}</div>
           <h1 style={{ marginTop: 6 }}>Overall <span className="num">{Math.round(result.overall ?? 0)}</span>{result.skinAge ? <span className="muted" style={{ fontSize: 18 }}> · skin age {result.skinAge}</span> : null}</h1>
-          {isDemoResult && <div className="banner demo">◆ These are the real scores YouCam returned for our synthetic sample face (shown below), not for your photo. Add a YOUCAM_API_KEY to analyse your own.</div>}
+          {notice && <div className="banner warn">{notice}</div>}
+          {isDemoResult && <div className="banner demo">◆ These are the real scores YouCam returned for our synthetic sample face (shown below), not for your photo.</div>}
           <div className="compare section" style={{ aspectRatio: "580 / 780" }}>
             <img src={resultPhoto} alt="Analysed photo" />
             {mask && result.scores[mask]?.mask && <img src={result.scores[mask]!.mask} alt="" />}
