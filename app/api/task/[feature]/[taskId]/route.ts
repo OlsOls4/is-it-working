@@ -13,6 +13,14 @@ function shape(feature: Feature, resp: any) {
   if (feature === "skin-tone-analysis") return normaliseSkinTone(resp);
   return normaliseVto(resp);
 }
+/** Route YouCam's S3 result links through /api/img so browsers render them (they're served as octet-stream). */
+const via = (u?: string) => (u && /^https:\/\//.test(u) ? `/api/img?u=${encodeURIComponent(u)}` : u);
+function proxied(r: any) {
+  if (r?.scores) for (const k of Object.keys(r.scores)) r.scores[k].mask = via(r.scores[k].mask);
+  if (r?.resized) r.resized = via(r.resized);
+  if (r?.url) r.url = via(r.url);
+  return r;
+}
 function recorded(f: Feature, fallback?: FallbackReason, detail?: string) {
   const fx = FIXTURES[f];
   return NextResponse.json({
@@ -33,7 +41,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ feature: strin
     const resp = await getTask(f, taskId);
     const status = resp?.data?.task_status;
     if (status === "success") {
-      try { return NextResponse.json({ status, demo: false, result: shape(f, resp) }); }
+      try { return NextResponse.json({ status, demo: false, result: proxied(shape(f, resp)) }); }
       catch { return recorded(f, "api-error", "unexpected response shape"); }
     }
     if (status === "error") {

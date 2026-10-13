@@ -55,7 +55,7 @@ export async function getCredit(): Promise<number | null> {
   try {
     const r = await fetch(`${BASE}/s2s/v1.0/client/credit`, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(6000) });
     const j = await r.json();
-    if (!r.ok || !Array.isArray(j?.results)) return null;
+    if (!r.ok || !Array.isArray(j?.results)) { console.error("[youcam] credit check failed", r.status, JSON.stringify(j).slice(0, 200)); return null; }
     const units = j.results.reduce((a: number, x: any) => a + (Number(x.amount_dec ?? x.amount) || 0), 0);
     creditCache = { at: Date.now(), units };
     return units;
