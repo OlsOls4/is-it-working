@@ -1,0 +1,24 @@
+{
+ "_meta": {
+  "source": "REAL YouCam API response, recorded 2026-10-22",
+  "endpoint": "GET /s2s/v2.0/task/skin-simulation/{task_id}",
+  "task_id": "LE7gn8U-g1ueE8_LalZy-TeLDC5y0RzGHYLPh8O2mjC9IvFeUMOxUrjlnqrT86xakiOzep5m_kY_sYO3hho_0w",
+  "request": {
+   "src_file_id": "<file_id from POST /s2s/v2.0/file>",
+   "texture": 0.5
+  },
+  "image": "/demo/series/w08/photo.jpg",
+  "units": 4,
+  "note": "Signed result URL downloaded to /public/demo/sim-texture.jpg."
+ },
+ "response": {
+  "status": 200,
+  "data": {
+   "error": null,
+   "results": {
+    "url": "/demo/sim-texture.jpg"
+   },
+   "task_status": "success"
+  }
+ }
+}

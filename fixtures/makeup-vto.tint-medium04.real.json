@@ -1,0 +1,49 @@
+{
+ "_meta": {
+  "source": "REAL YouCam API response, recorded 2026-10-22",
+  "endpoint": "GET /s2s/v2.0/task/makeup-vto/{task_id}",
+  "task_id": "tKZlD6T99YzCW9w7S8PdjW9odbiQQWd6q291C_HuqzCcU4Gw0E1xu4xwChdHsEfCd-BTT-LvvMAmKHuvXEbI5Q",
+  "request": {
+   "src_file_id": "<file_id from POST /s2s/v2.0/file>",
+   "version": "1.0",
+   "effects": [
+    {
+     "category": "foundation",
+     "palettes": [
+      {
+       "color": "#c18466",
+       "colorIntensity": 55,
+       "glowIntensity": 15,
+       "coverageIntensity": 60
+      }
+     ]
+    },
+    {
+     "category": "concealer",
+     "palettes": [
+      {
+       "color": "#c89378",
+       "colorIntensity": 45,
+       "colorUnderEyeIntensity": 50,
+       "coverageLevel": 55
+      }
+     ]
+    }
+   ]
+  },
+  "image": "/demo/series/w08/photo.jpg",
+  "units": 1,
+  "shade": "Dew Tint Medium 04 #c18466",
+  "note": "The dropped tint's own shade rendered on the face, for the side-by-side."
+ },
+ "response": {
+  "status": 200,
+  "data": {
+   "error": null,
+   "results": {
+    "url": "/demo/vto-tint-medium04.jpg"
+   },
+   "task_status": "success"
+  }
+ }
+}

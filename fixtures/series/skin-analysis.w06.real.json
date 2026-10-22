@@ -1,0 +1,128 @@
+{
+ "_meta": {
+  "source": "REAL YouCam API response, recorded 2026-10-22",
+  "endpoint": "GET /s2s/v2.1/task/skin-analysis/{task_id}",
+  "task_id": "NEKRpSsu28fso5aIhyOf6oktJdLg8vG1eBW75vxfThbW5Rlq8s3YLPS59JlEGbThV8vjSsGp_00cofvLX8kY0w",
+  "request": {
+   "src_file_id": "<file_id from POST /s2s/v2.0/file>",
+   "dst_actions": [
+    "acne",
+    "redness",
+    "age_spot",
+    "wrinkle",
+    "pore",
+    "moisture",
+    "texture",
+    "radiance"
+   ],
+   "miniserver_args": {
+    "enable_mask_overlay": false
+   },
+   "format": "json"
+  },
+  "image": "/demo/series/w06/photo.jpg (week 6 of the synthetic series: luma of the AI-generated week-0 face, chroma moved towards the AI-generated week-8 variant, plus small exposure/white-balance jitter; no real person)",
+  "units": 12,
+  "note": "Signed S3 mask URLs (2h TTL) were downloaded and rewritten to local paths; scores untouched.",
+  "week": 6
+ },
+ "response": {
+  "status": 200,
+  "data": {
+   "error": null,
+   "results": {
+    "output": [
+     {
+      "ui_score": 74,
+      "mask_urls": [
+       "/demo/series/w06/pore.png"
+      ],
+      "raw_score": 65.37310886383057,
+      "type": "pore",
+      "url": null
+     },
+     {
+      "ui_score": 72,
+      "mask_urls": [
+       "/demo/series/w06/texture.png"
+      ],
+      "raw_score": 60.30548810958862,
+      "type": "texture",
+      "url": null
+     },
+     {
+      "ui_score": 79,
+      "mask_urls": [
+       "/demo/series/w06/redness.png"
+      ],
+      "raw_score": 77.08434295654297,
+      "type": "redness",
+      "url": null
+     },
+     {
+      "ui_score": 72,
+      "mask_urls": [
+       "/demo/series/w06/radiance.png"
+      ],
+      "raw_score": 59.30175185203552,
+      "type": "radiance",
+      "url": null
+     },
+     {
+      "ui_score": 87,
+      "mask_urls": [
+       "/demo/series/w06/wrinkle.png"
+      ],
+      "raw_score": 93.42361092567444,
+      "type": "wrinkle",
+      "url": null
+     },
+     {
+      "ui_score": 74,
+      "mask_urls": [
+       "/demo/series/w06/age_spot.png"
+      ],
+      "raw_score": 77.69380950927734,
+      "type": "age_spot",
+      "url": null
+     },
+     {
+      "ui_score": 82,
+      "mask_urls": [
+       "/demo/series/w06/acne.png"
+      ],
+      "raw_score": 83.30253,
+      "type": "acne",
+      "url": null
+     },
+     {
+      "ui_score": 71,
+      "mask_urls": [
+       "/demo/series/w06/moisture.png"
+      ],
+      "raw_score": 52.85330414772034,
+      "type": "moisture",
+      "url": null
+     },
+     {
+      "score": 76.375,
+      "type": "all",
+      "url": null
+     },
+     {
+      "score": 36,
+      "type": "skin_age",
+      "url": null
+     },
+     {
+      "mask_urls": [
+       "/demo/series/w06/photo.jpg"
+      ],
+      "type": "resize_image",
+      "url": null
+     }
+    ]
+   },
+   "task_status": "success"
+  }
+ }
+}

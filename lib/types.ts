@@ -9,17 +9,20 @@ export type ProductType =
 export interface ConcernScore {
   raw: number; // YouCam raw_score, 1-100, higher = healthier
   ui: number;  // YouCam ui_score, 1-100 (calibrated, friendlier)
-  mask?: string; // URL of the detection mask (PNG with alpha)
+  mask?: string; // detection mask (PNG with alpha): a /demo/ path, or an "idb:" ref to a blob saved in IndexedDB
 }
 
 export interface CheckIn {
   id: string;
   date: string; // ISO date (yyyy-mm-dd)
-  photo?: string; // URL or data URL
+  photo?: string; // full-size photo: a /demo/ path, or an "idb:" ref to the blob saved in IndexedDB (never expires)
+  thumb?: string; // small data-URL thumbnail kept in localStorage (fallback if IndexedDB is unavailable)
   scores: Partial<Record<ConcernKey, ConcernScore>>;
   overall?: number; // "all" score
   skinAge?: number;
-  source: "live" | "demo-real" | "demo-simulated";
+  // live = your photo, live YouCam call; demo-real = seeded demo week (real recorded YouCam response);
+  // recorded = you checked in on the public demo without live access, so the recorded sample result was saved
+  source: "live" | "demo-real" | "recorded";
 }
 
 export interface Product {
@@ -36,11 +39,15 @@ export interface Product {
   shadeHex?: string;
 }
 
+export interface SkinTone { hex: string; date: string; source: "live" | "demo-real"; eyeColor?: string; hairColor?: string }
+
 export type VerdictKind = "KEEP" | "WAIT" | "DROP";
 
 export interface Verdict {
   kind: VerdictKind;
-  label: string;          // "KEEP" | "GIVE IT 4 MORE WEEKS" | "DROP"
+  label: string;          // "KEEP" | "GIVE IT 4 MORE WEEKS" | "DROP" | "COLLECTING 1/3"
+  collecting?: boolean;   // fewer than 3 check-ins since starting: no judgement yet
+  shade?: { deltaE: number; skinHex: string; shadeHex: string }; // complexion products: fit vs YouCam Skin Tone
   moreWeeks?: number;
   headline: string;       // one-line plain-English
   reasons: string[];      // supporting bullet points

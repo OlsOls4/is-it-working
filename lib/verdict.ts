@@ -13,7 +13,9 @@
  *   threshold = 2 x standard error of (current - baseline), floored at 2.0 points
  *
  * Rules (in order):
- *   1. < 3 check-ins since starting           -> GIVE IT N MORE WEEKS (not enough data)
+ *   0. complexion product whose shade is a visible mismatch for the user's skin
+ *      (CIEDE2000 > 5 vs the latest YouCam Skin Tone reading)  -> DROP (wrong shade), whatever the skincare data says
+ *   1. < 3 check-ins since starting           -> COLLECTING n/3 (shown as such; kind = WAIT, no judgement yet)
  *   2. change >= +threshold                    -> KEEP
  *   3. change <= -threshold
  *        a. inside a known "purge" window      -> GIVE IT N MORE WEEKS
@@ -28,6 +30,9 @@
  */
 import type { CheckIn, ConcernKey, Product, Verdict } from "./types";
 import { PRODUCT_TYPES } from "./concerns.ts";
+import { deltaE, MISMATCH_DE } from "./shades.ts";
+
+export interface VerdictContext { asOf?: string; skinHex?: string }
 
 const DAY = 86_400_000;
 const toTime = (d: string) => new Date(d + (d.length === 10 ? "T12:00:00Z" : "")).getTime();
@@ -65,7 +70,8 @@ export function noiseFor(series: { date: string; raw: number }[]) {
 const round1 = (x: number) => Math.round(x * 10) / 10;
 const fmtPts = (x: number) => `${x > 0 ? "+" : ""}${round1(x)} pts`;
 
-export function computeVerdict(product: Product, allProducts: Product[], checkIns: CheckIn[], concernLabel: string, asOf?: string): Verdict {
+export function computeVerdict(product: Product, allProducts: Product[], checkIns: CheckIn[], concernLabel: string, ctx: VerdictContext = {}): Verdict {
+  const { asOf, skinHex } = ctx;
   const type = PRODUCT_TYPES[product.type];
   const series = concernSeries(checkIns, product.concern);
   const startT = toTime(product.startDate);
@@ -108,6 +114,8 @@ export function computeVerdict(product: Product, allProducts: Product[], checkIn
   let moreWeeks: number | undefined;
   let headline: string;
   let confidence: number;
+  let collecting = false;
+  const shadeDE = product.complexion && product.shadeHex && skinHex ? deltaE(product.shadeHex, skinHex) : null;
 
   if (baseline !== null && delta !== null) {
     reasons.push(`${concernLabel} score: ${round1(baseline)} before → ${round1(current!)} now (${fmtPts(delta)}).`);
@@ -115,10 +123,20 @@ export function computeVerdict(product: Product, allProducts: Product[], checkIn
   }
   reasons.push(`${type.label}: typically ${type.min}–${type.max} weeks to show. You're ${wk(weeksOn)} in.`);
 
-  if (after.length < 3 || delta === null) {
+  if (shadeDE !== null && shadeDE > MISMATCH_DE) {
+    kind = "DROP";
+    const claim = delta === null || after.length < 3 ? "" : Math.abs(delta) < threshold ? ` Its ${c} claim hasn't shown up either (${fmtPts(delta)}, within your wobble).` : delta >= threshold ? ` (Its ${c} claim did move ${fmtPts(delta)}, so look for that in the replacement.)` : "";
+    headline = `Wrong shade, not wrong skin: ${product.shadeName ?? "this shade"} is ΔE ${round1(shadeDE)} from your skin tone — a visible mismatch.${claim}`;
+    reasons.unshift(`YouCam Skin Tone Analysis reads your skin as ${skinHex!.toUpperCase()}; ${product.shadeName ?? "the shade"} is ${product.shadeHex!.toUpperCase()}. CIEDE2000 ΔE ${round1(shadeDE)} (over ${MISMATCH_DE} is visible to most people).`);
+    reasons.push(`A complexion product in the wrong shade gets abandoned whatever its skincare claims. Swap to a matched shade instead of giving up on the category.`);
+    confidence = 60 + Math.min((shadeDE - MISMATCH_DE) * 6, 25);
+  } else if (after.length < 3 || delta === null) {
     kind = "WAIT";
+    collecting = true;
     moreWeeks = Math.max(3 - after.length, Math.ceil(type.min - weeksOn), 1);
-    headline = `Only ${after.length} check-in${after.length === 1 ? "" : "s"} since you started. We need at least 3 to tell a real change from a good-light day.`;
+    headline = after.length === 0
+      ? `No check-ins since you started yet. After 3 weekly check-ins we can tell a real change from a good-light day.`
+      : `${after.length} of 3 check-ins since you started. We need at least 3 to tell a real change from a good-light day.`;
     confidence = 30;
   } else if (delta >= threshold) {
     kind = "KEEP";
@@ -170,10 +188,11 @@ export function computeVerdict(product: Product, allProducts: Product[], checkIn
   }
   confidence = Math.round(Math.max(20, Math.min(95, confidence)));
   const confidenceLabel = confidence >= 70 ? "High" : confidence >= 45 ? "Medium" : "Low";
-  const label = kind === "KEEP" ? "KEEP" : kind === "DROP" ? "DROP" : `GIVE IT ${moreWeeks} MORE WEEK${moreWeeks === 1 ? "" : "S"}`;
+  const label = kind === "KEEP" ? "KEEP" : kind === "DROP" ? "DROP" : collecting ? `COLLECTING ${after.length}/3` : `GIVE IT ${moreWeeks} MORE WEEK${moreWeeks === 1 ? "" : "S"}`;
 
   return {
-    kind, label, moreWeeks, headline, reasons, confidence, confidenceLabel,
+    kind, label, moreWeeks, headline, reasons, confidence, confidenceLabel, collecting,
+    ...(shadeDE !== null ? { shade: { deltaE: round1(shadeDE), skinHex: skinHex!, shadeHex: product.shadeHex! } } : {}),
     stats: {
       baseline: baseline === null ? null : round1(baseline),
       current: current === null ? null : round1(current),
