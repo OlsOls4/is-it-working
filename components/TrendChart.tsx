@@ -14,7 +14,7 @@ export default function TrendChart({
   height?: number;
   showDots?: boolean;
 }) {
-  const W = 360, H = height, L = 30, R = 10, T = 26, B = 24;
+  const W = 360, H = height, L = 34, R = 10, T = 26, B = 24;
   const all = concerns.flatMap((c) => concernSeries(checkIns, c));
   if (all.length < 1) return <p className="muted small">No check-ins yet.</p>;
   const ts = all.map((p) => t(p.date));
@@ -29,7 +29,8 @@ export default function TrendChart({
   const weeks = Math.round((x1 - x0) / (7 * 86400000));
 
   return (
-    <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Trend of ${concerns.join(", ")}`}>
+    <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`YouCam score trend (higher is healthier) for ${concerns.map((c) => concernMeta(c).label).join(", ")}`}>
+      <text x={4} y={T + (H - T - B) / 2} transform={`rotate(-90 4 ${T + (H - T - B) / 2})`} textAnchor="middle" dominantBaseline="hanging">score ↑ healthier</text>
       {yTicks.map((v) => (
         <g key={v}>
           <line x1={L} x2={W - R} y1={Y(v)} y2={Y(v)} stroke="#d9d0bd" strokeWidth="0.6" strokeDasharray="2 3" />
@@ -72,21 +73,45 @@ export default function TrendChart({
   );
 }
 
+/** Which line is which concern (colour key), plus how to read the axis. */
+export function ConcernLegend({ concerns }: { concerns: ConcernKey[] }) {
+  if (!concerns.length) return null;
+  return (
+    <div className="legend" aria-label="Line colours">
+      {concerns.map((c) => (
+        <span key={c}><i style={{ borderTop: `3px solid ${concernMeta(c).colour}`, width: 16 }} />{concernMeta(c).label}</span>
+      ))}
+      <span className="muted">YouCam raw score, 1–100</span>
+    </div>
+  );
+}
+
 export function ProductLegend({ products }: { products: Product[] }) {
   if (!products.length) return null;
   return (
     <div className="legend">
       {products.map((p, i) => (
-        <span key={p.id}><b className="mono" style={{ marginRight: 4 }}>{String.fromCharCode(65 + i)}</b>{p.name}</span>
+        <span key={p.id}><b className="mono pin">{String.fromCharCode(65 + i)}</b>started {p.name}</span>
       ))}
     </div>
   );
 }
 
-export function Sparkline({ checkIns, concern, colour }: { checkIns: CheckIn[]; concern: ConcernKey; colour: string }) {
+/**
+ * Sparkline on a SHARED vertical scale: every row spans the same number of points (`span`), centred on its own mean,
+ * so a flat concern looks flat and a big mover looks big (per-row auto-scaling made ±0.2 look like ±9).
+ */
+export function Sparkline({ checkIns, concern, colour, span }: { checkIns: CheckIn[]; concern: ConcernKey; colour: string; span: number }) {
   const s = concernSeries(checkIns, concern);
-  if (s.length < 2) return null;
-  const W = 80, H = 24, vs = s.map((p) => p.raw), lo = Math.min(...vs), hi = Math.max(...vs);
-  const d = s.map((p, i) => `${i ? "L" : "M"}${((i / (s.length - 1)) * W).toFixed(1)},${(H - ((p.raw - lo) / Math.max(1, hi - lo)) * H).toFixed(1)}`).join(" ");
-  return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}><path d={d} fill="none" stroke={colour} strokeWidth="2" strokeLinecap="round" /></svg>;
+  if (s.length < 2) return <svg width={80} height={24} aria-hidden />;
+  const W = 80, H = 24, vs = s.map((p) => p.raw), mid = (Math.min(...vs) + Math.max(...vs)) / 2, lo = mid - span / 2;
+  const d = s.map((p, i) => `${i ? "L" : "M"}${((i / (s.length - 1)) * W).toFixed(1)},${(H - ((p.raw - lo) / span) * H).toFixed(1)}`).join(" ");
+  return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden><line x1="0" x2={W} y1={H / 2} y2={H / 2} stroke="#d9d0bd" strokeDasharray="2 3" strokeWidth="0.8" /><path d={d} fill="none" stroke={colour} strokeWidth="2" strokeLinecap="round" /></svg>;
+}
+
+/** The span every sparkline shares: the largest swing of any concern (min 6 pts so pure noise stays small). */
+export function sharedSpan(checkIns: CheckIn[], concerns: ConcernKey[]) {
+  let span = 6;
+  for (const c of concerns) { const v = concernSeries(checkIns, c).map((p) => p.raw); if (v.length > 1) span = Math.max(span, Math.max(...v) - Math.min(...v) + 1); }
+  return span;
 }

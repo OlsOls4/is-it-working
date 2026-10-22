@@ -1,19 +1,21 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CONCERNS, PRODUCT_TYPES } from "@/lib/concerns";
 import type { ConcernKey, ProductType } from "@/lib/types";
 import { actions } from "@/lib/store";
+import { localISO } from "@/lib/dates";
 
 export default function NewProduct() {
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
-  const [f, setF] = useState({ name: "", brand: "", type: "niacinamide" as ProductType, concern: "pore" as ConcernKey, startDate: today, price: "" });
+  const [f, setF] = useState({ name: "", brand: "", type: "niacinamide" as ProductType, concern: "pore" as ConcernKey, startDate: "", price: "" });
+  // Set today's date after mount (not at build/prerender time, which caused a hydration mismatch).
+  useEffect(() => { setF((x) => (x.startDate ? x : { ...x, startDate: localISO() })); }, []);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const t = PRODUCT_TYPES[f.type];
   return (
-    <div className="fade-in">
+    <div className="fade-in narrow">
       <Link href="/products" className="back">← Products</Link>
       <h1>What are you <em>starting</em>?</h1>
       <p className="lede">Tip: take a check-in selfie <b>before</b> your first use, so we have a clean baseline.</p>
@@ -31,9 +33,9 @@ export default function NewProduct() {
         </label>
         <p className="small muted" style={{ margin: "6px 2px 0" }}>Fair verdict after {t.min}–{t.max} weeks. {t.note}</p>
         <div className="field"><span>Main thing you want it to fix</span>
-          <div className="chips" style={{ flexWrap: "wrap" }}>
+          <div className="chips wrap" role="group" aria-label="Main concern">
             {CONCERNS.map((c) => (
-              <button type="button" key={c.key} className={`chip ${f.concern === c.key ? "on" : ""}`} onClick={() => setF({ ...f, concern: c.key })}>
+              <button type="button" key={c.key} aria-pressed={f.concern === c.key} className={`chip ${f.concern === c.key ? "on" : ""}`} onClick={() => setF({ ...f, concern: c.key })}>
                 <span className="sw" style={{ background: c.colour }} />{c.label}
               </button>
             ))}
