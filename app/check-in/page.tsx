@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMode } from "@/components/ModeProvider";
 import { prepareImage, runTask, TaskError } from "@/lib/api-client";
-import { actions, useAppState } from "@/lib/store";
+import { actions, uid, useAppState } from "@/lib/store";
+import { persistUrl, putBlob } from "@/lib/blobstore";
+import { localISO } from "@/lib/dates";
+import { minShortSide } from "@/lib/fallback";
 import { CONCERNS } from "@/lib/concerns";
 import type { CheckIn, ConcernKey } from "@/lib/types";
 
@@ -33,6 +36,7 @@ export default function CheckInPage() {
   const [status, setStatus] = useState("");
   const [mask, setMask] = useState<ConcernKey | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -74,9 +78,9 @@ export default function CheckInPage() {
   }
 
   async function useSample() {
-    const blob = await (await fetch("/demo/week-08.jpg")).blob();
+    const blob = await (await fetch("/demo/series/w08/photo.jpg")).blob();
     const p = await prepareImage(blob);
-    setPhoto({ ...p, preview: "/demo/week-08.jpg" });
+    setPhoto({ ...p, preview: "/demo/series/w08/photo.jpg" });
     setStep("review");
   }
 
@@ -91,16 +95,35 @@ export default function CheckInPage() {
     }
   }
 
-  function save() {
+  /**
+   * Save the check-in. Live results: copy the full-size photo and every YouCam mask into IndexedDB first, because
+   * YouCam's mask URLs are signed links that expire after ~2 hours (Compare would break the next day otherwise).
+   * Recorded results (public demo, no access code) are saved too, clearly marked, so "Start my own" isn't a dead end.
+   */
+  async function save() {
     if (!result || !photo) return;
-    actions.addCheckIn({ date: new Date().toISOString().slice(0, 10), photo: photo.dataUrl, scores: result.scores, overall: result.overall, skinAge: result.skinAge, source: "live" });
-    setSaved(true);
+    setSaving(true);
+    const id = uid();
+    const recorded = isDemoResult;
+    let photoRef: string | undefined = recorded ? resultPhoto : undefined;
+    const scores: CheckIn["scores"] = {};
+    try {
+      if (!recorded) photoRef = await putBlob(`checkin-${id}-photo`, photo.blob);
+      await Promise.all(Object.entries(result.scores).map(async ([k, sc]) => {
+        scores[k as ConcernKey] = { ...sc!, mask: recorded ? sc!.mask : await persistUrl(`checkin-${id}-mask-${k}`, sc!.mask) };
+      }));
+    } catch {
+      Object.assign(scores, result.scores); // IndexedDB unavailable (private mode): keep scores, masks may expire
+    }
+    actions.addCheckIn({ id, date: localISO(), photo: photoRef, thumb: photo.dataUrl, scores, overall: result.overall, skinAge: result.skinAge, source: recorded ? "recorded" : "live" });
+    setSaving(false); setSaved(true);
   }
 
   const lowLight = photo && photo.luminance < 85;
   const brightLight = photo && photo.luminance > 215;
-  const smallImg = photo && Math.min(photo.width, photo.height) < 480;
-  const resultPhoto = isDemoResult ? "/demo/week-00.jpg" : photo?.preview;
+  const MIN = minShortSide("skin-analysis");
+  const smallImg = photo && Math.min(photo.width, photo.height) < MIN;
+  const resultPhoto = isDemoResult ? "/demo/series/w08/photo.jpg" : photo?.preview;
 
   return (
     <div className="fade-in">
@@ -127,7 +150,7 @@ export default function CheckInPage() {
             <input ref={fileRef} type="file" accept="image/jpeg,image/png" capture="user" hidden onChange={(e) => onFile(e.target.files?.[0])} />
             <button className="btn soft block" onClick={useSample}>{demo ? "Use the sample face (demo)" : "Use the synthetic sample face"}</button>
           </div>
-          {demo && <div className="banner demo">◆ Demo mode: analysis returns the recorded real YouCam response for our synthetic sample face, whatever photo you use.{liveConfigured ? " Live analysis is switched on for testers with an access code." : ""}</div>}
+          {demo && <div className="banner demo">◆ Demo mode: analysis returns a recorded real YouCam response for our synthetic sample face (week 8), whatever photo you use.{liveConfigured ? " Live analysis is switched on for testers with an access code." : ""}</div>}
           {!demo && <p className="small muted" style={{ marginTop: 12 }}>Live mode: your photo is sent to the YouCam Skin Analysis API (8 concerns). It isn't stored on our server.</p>}
         </>
       )}
@@ -152,7 +175,7 @@ export default function CheckInPage() {
           <div className="cam section"><img className="preview" src={photo.preview} alt="Your selfie" /><Guide /></div>
           {lowLight && <div className="banner warn">It looks a bit dark — scores for redness and spots get unreliable in low light. Try facing a window.</div>}
           {brightLight && <div className="banner warn">It looks very bright — blown-out highlights hide texture. Step back from direct light.</div>}
-          {smallImg && <div className="banner err">This image is under 480px on its short side, which YouCam can't analyse.</div>}
+          {smallImg && <div className="banner err">This image is {Math.min(photo.width, photo.height)}px on its short side; YouCam Skin Analysis needs at least {MIN}px. Retake or upload a larger photo.</div>}
           {!lowLight && !brightLight && !smallImg && <div className="banner" style={{ background: "var(--keep-bg)", color: "var(--keep)" }}>✓ Lighting looks even.</div>}
           <div className="btn-row section">
             <button className="btn ghost" onClick={() => { setPhoto(null); setStep("prep"); }}>Retake</button>
@@ -173,11 +196,11 @@ export default function CheckInPage() {
 
       {step === "error" && (
         <>
-          <h2>That didn't work</h2>
-          <div className="banner err">{err}</div>
+          <h2>{canFallback ? "Let's retake that" : "That didn't work"}</h2>
+          <div className="banner err" role="alert">{err}</div>
           <div className="btn-row section">
-            <button className="btn ghost" onClick={() => setStep("prep")}>Start again</button>
-            <button className="btn" onClick={() => analyse()}>Retry</button>
+            <button className="btn" onClick={() => { setPhoto(null); setStep("prep"); }}>Retake photo</button>
+            <button className="btn ghost" onClick={() => analyse()}>Try the same photo again</button>
           </div>
           {canFallback && <button className="btn soft block section" onClick={() => analyse(true)}>Show the recorded demo result instead</button>}
         </>
@@ -193,10 +216,10 @@ export default function CheckInPage() {
             <img src={resultPhoto} alt="Analysed photo" />
             {mask && result.scores[mask]?.mask && <img src={result.scores[mask]!.mask} alt="" />}
           </div>
-          <div className="chips" style={{ marginTop: 10 }}>
-            <button className={`chip ${mask === null ? "on" : ""}`} onClick={() => setMask(null)}>No mask</button>
+          <div className="chips" role="group" aria-label="YouCam detection mask" style={{ marginTop: 10 }}>
+            <button aria-pressed={mask === null} className={`chip ${mask === null ? "on" : ""}`} onClick={() => setMask(null)}>No mask</button>
             {CONCERNS.filter((c) => result.scores[c.key]?.mask).map((c) => (
-              <button key={c.key} className={`chip ${mask === c.key ? "on" : ""}`} onClick={() => setMask(c.key)}><span className="sw" style={{ background: c.colour }} />{c.label}</button>
+              <button key={c.key} aria-pressed={mask === c.key} className={`chip ${mask === c.key ? "on" : ""}`} onClick={() => setMask(c.key)}><span className="sw" style={{ background: c.colour }} />{c.label}</button>
             ))}
           </div>
           <div className="card section">
@@ -215,15 +238,18 @@ export default function CheckInPage() {
             </div>
             <p className="small muted" style={{ marginTop: 12 }}>YouCam raw scores, 1–100, higher = healthier skin for that concern.</p>
           </div>
-          {isDemoResult || state.kind === "demo" ? (
+          {state.kind === "demo" ? (
             <div className="section" style={{ display: "grid", gap: 10 }}>
-              <p className="small muted" style={{ margin: 0 }}>{isDemoResult ? "Demo results aren't added to the timeline (that would muddle the seeded verdicts)." : "You're on the demo profile. Choose “Start my own” under Products → Your data to save live check-ins."}</p>
+              <p className="small muted" style={{ margin: 0 }}>{isDemoResult ? "Demo results aren't added to the seeded demo timeline (its 9 weeks are already real recorded analyses)." : "You're on the demo profile. Choose “Start my own” under Products → Your data to save live check-ins."}</p>
               <Link href="/" className="btn block">See the verdicts</Link>
             </div>
           ) : saved ? (
             <Link href="/" className="btn block section">Saved ✓ — see your verdicts</Link>
           ) : (
-            <button className="btn block section" onClick={save}>Save this check-in</button>
+            <div className="section" style={{ display: "grid", gap: 10 }}>
+              {isDemoResult && <p className="small muted" style={{ margin: 0 }}>This is the recorded sample result (no live access code), so it will be saved marked “sample” — it measures our synthetic face, not you. Live analysis needs the access code from the Devpost testing instructions.</p>}
+              <button className="btn block" disabled={saving} onClick={save}>{saving ? "Saving photo and masks…" : isDemoResult ? "Save as a sample check-in" : "Save this check-in"}</button>
+            </div>
           )}
         </>
       )}

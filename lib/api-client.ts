@@ -1,5 +1,8 @@
 "use client";
-export type Feature = "skin-analysis" | "skin-tone-analysis" | "makeup-vto";
+import { friendlyError, type AnyFeature } from "./fallback";
+import { getBlob, isIdbRef } from "./blobstore";
+import { DEMO_TINT_SHADE } from "./demo-data";
+export type Feature = AnyFeature;
 
 export type Mode = { demo: boolean; liveConfigured?: boolean; accessCodeRequired?: boolean; accessOk?: boolean; reason?: string };
 
@@ -19,7 +22,8 @@ export async function getMode(): Promise<Mode> {
 }
 
 export class TaskError extends Error {
-  constructor(message: string, public canFallback = false) { super(message); }
+  /** canFallback: the recorded result can be shown instead; code: YouCam error code (photo problems -> retake). */
+  constructor(message: string, public canFallback = false, public code?: string) { super(message); }
 }
 
 /** Start a YouCam task through our server route and poll it to completion. */
@@ -35,7 +39,7 @@ export async function runTask<T = any>(
   Object.entries(extra).forEach(([k, v]) => form.append(k, v));
   const headers = modeHeaders(opts.forceDemo);
   const recorded = async (notice: string) => {
-    const r = await fetch(`/api/task/${feature}/demo-${feature}`, { cache: "no-store" });
+    const r = await fetch(`/api/task/${feature}/demo-${feature}${extra.shade?.toLowerCase() === DEMO_TINT_SHADE.hex ? "~tint" : ""}`, { cache: "no-store" });
     const j = await r.json();
     return { result: j.result as T, demo: true, provenance: j.provenance, notice };
   };
@@ -56,22 +60,10 @@ export async function runTask<T = any>(
     try { j = await (await fetch(`/api/task/${feature}/${encodeURIComponent(s.taskId)}`, { cache: "no-store" })).json(); }
     catch { j = { status: "running" }; }
     if (j.status === "success") return { result: j.result, demo: j.demo, provenance: j.provenance, notice: j.notice || s.notice };
-    if (j.status === "error") throw new TaskError(friendlyError(j.error, j.message), true);
+    if (j.status === "error") throw new TaskError(friendlyError(j.error, feature, j.message), true, j.error);
     if (Date.now() - t0 > 90_000) return recorded("The live YouCam API took too long — showing a recorded result.");
     await new Promise((res) => setTimeout(res, s.demo ? 600 : 2500));
   }
-}
-
-function friendlyError(code?: string, msg?: string) {
-  const map: Record<string, string> = {
-    error_src_face_too_small: "Your face is too small in the frame — move closer so it fills the oval.",
-    error_src_face_out_of_bound: "Part of your face is outside the frame — centre it in the oval.",
-    error_lighting_dark: "It's too dark — face a window or a soft light.",
-    error_no_face: "We couldn't find a face. Look straight at the camera.",
-    error_pose: "Look straight ahead — head level, not tilted.",
-    error_below_min_image_size: "That photo is too small (needs at least 480px on the short side).",
-  };
-  return (code && map[code]) || msg || code || "Analysis failed";
 }
 
 /** Downscale to <=1600px long side, JPEG ~0.9, and return blob + mean luminance (0-255) for a lighting hint. */
@@ -91,4 +83,18 @@ export async function prepareImage(src: Blob | HTMLCanvasElement): Promise<{ blo
   const t = document.createElement("canvas"); const ts = 360 / Math.max(cw, ch); t.width = Math.round(cw * ts); t.height = Math.round(ch * ts);
   t.getContext("2d")!.drawImage(c, 0, 0, t.width, t.height);
   return { blob, dataUrl: t.toDataURL("image/jpeg", 0.75), luminance, width: cw, height: ch };
+}
+
+/** Pixel size of an image blob. */
+export async function imageSize(b: Blob) { const bmp = await createImageBitmap(b); const r = { width: bmp.width, height: bmp.height }; bmp.close?.(); return r; }
+
+/**
+ * The full-size photo behind a check-in, for re-analysis (skin tone / VTO / simulation).
+ * idb: refs and /demo/ files are full size; a data: URL is only the 360px localStorage thumbnail, so we return null
+ * and the caller asks for a fresh photo instead of sending YouCam an image it will reject.
+ */
+export async function fullSizePhoto(src?: string): Promise<Blob | null> {
+  if (!src || src.startsWith("data:")) return null;
+  if (isIdbRef(src)) return getBlob(src);
+  try { const r = await fetch(src); return r.ok ? await r.blob() : null; } catch { return null; }
 }

@@ -3,6 +3,7 @@
  * Docs: https://docs.perfectcorp.com/reference/ai_skin_analysis ,
  *       https://docs.perfectcorp.com/reference/ai_skin_tone_analysis ,
  *       https://docs.perfectcorp.com/reference/makeup_vto ,
+ *       https://docs.perfectcorp.com/reference/ai_skin_simulation ,
  *       https://docs.perfectcorp.com/reference/file
  *
  * Flow for every feature:
@@ -13,13 +14,15 @@
  */
 import "server-only";
 
-export type Feature = "skin-analysis" | "skin-tone-analysis" | "makeup-vto";
+export type Feature = "skin-analysis" | "skin-tone-analysis" | "makeup-vto" | "skin-simulation";
+export const FEATURES: Feature[] = ["skin-analysis", "skin-tone-analysis", "makeup-vto", "skin-simulation"];
 
 const BASE = process.env.YOUCAM_API_BASE || "https://yce-api-01.makeupar.com";
 const VERSION: Record<Feature, string> = {
   "skin-analysis": "v2.1",
   "skin-tone-analysis": "v2.0",
   "makeup-vto": "v2.0",
+  "skin-simulation": "v2.0",
 };
 
 /** Deployment-level: true when no key is set or DEMO_MODE=1. Individual requests can still be demo (see liveGate). */
@@ -28,8 +31,8 @@ export function isDemoMode() {
 }
 export const liveConfigured = () => !isDemoMode();
 
-/** Units per call, from GET /s2s/v2.0/credit/feature-cost (skin analysis = SD, 5-8 concerns). */
-export const UNIT_COST: Record<Feature, number> = { "skin-analysis": 12, "skin-tone-analysis": 20, "makeup-vto": 1 };
+/** Units per call, from GET /s2s/v2.0/credit/feature-cost (22 Oct 2026; skin analysis = SD 5-8 concerns, simulation = 1-4 concerns). */
+export const UNIT_COST: Record<Feature, number> = { "skin-analysis": 12, "skin-tone-analysis": 20, "makeup-vto": 1, "skin-simulation": 4 };
 
 export type GateReason = "demo-deployment" | "forced-demo" | "no-access-code-configured" | "access-code-missing" | "access-code-wrong";
 /**

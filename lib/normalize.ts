@@ -1,5 +1,5 @@
 import type { CheckIn, ConcernKey } from "./types";
-import { CONCERN_KEYS } from "./concerns";
+import { CONCERN_KEYS } from "./concerns.ts";
 
 /** Normalise a YouCam skin-analysis (format=json) task response into our CheckIn scores. */
 export function normaliseSkinAnalysis(resp: any): Pick<CheckIn, "scores" | "overall" | "skinAge"> & { resized?: string } {
@@ -31,3 +31,12 @@ export function normaliseSkinTone(resp: any) {
 export function normaliseVto(resp: any) {
   return { url: resp?.data?.results?.url as string | undefined };
 }
+
+export function normaliseSimulation(resp: any) {
+  return { url: resp?.data?.results?.url as string | undefined };
+}
+
+/** Our concern keys -> YouCam Skin Simulation parameter names (moisture has no simulation). */
+export const SIMULATION_PARAM: Partial<Record<ConcernKey, string>> = {
+  acne: "acne", redness: "redness", age_spot: "spots", wrinkle: "wrinkle", pore: "pores", texture: "texture", radiance: "radiance",
+};
